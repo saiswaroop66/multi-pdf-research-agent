@@ -1,8 +1,11 @@
 import streamlit as st
 import tempfile
+import numpy as np
+import faiss
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from sentence_transformers import SentenceTransformer
 
 st.title("📚 Multi PDF Research Assistant")
 
@@ -31,8 +34,6 @@ if uploaded_files:
 
         all_documents.extend(documents)
 
-    st.success(f"{len(uploaded_files)} PDFs Loaded Successfully!")
-
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=500,
         chunk_overlap=100
@@ -40,12 +41,44 @@ if uploaded_files:
 
     chunks = splitter.split_documents(all_documents)
 
-    st.write("Total Pages:", len(all_documents))
-    st.write("Total Chunks:", len(chunks))
+    st.success(f"Created {len(chunks)} chunks")
 
-    st.subheader("Preview Chunks")
+    texts = [chunk.page_content for chunk in chunks]
 
-    for i, chunk in enumerate(chunks[:5]):
-        st.write(f"Chunk {i+1}")
-        st.write(chunk.page_content)
-        st.divider()
+    model = SentenceTransformer(
+        "all-MiniLM-L6-v2"
+    )
+
+    embeddings = model.encode(texts)
+
+    dimension = embeddings.shape[1]
+
+    index = faiss.IndexFlatL2(dimension)
+
+    index.add(
+        np.array(embeddings).astype("float32")
+    )
+
+    question = st.text_input(
+        "Ask a Question"
+    )
+
+    if question:
+
+        query_embedding = model.encode(
+            [question]
+        )
+
+        distances, indices = index.search(
+            np.array(query_embedding).astype("float32"),
+            k=3
+        )
+
+        st.subheader(
+            "Top Matching Chunks"
+        )
+
+        for idx in indices[0]:
+
+            st.write(texts[idx])
+            st.divider()
