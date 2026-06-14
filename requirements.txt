@@ -1,5 +1,7 @@
 streamlit
 langchain-community
 langchain-text-splitters
-sentence-transformers
 pypdf
+sentence-transformers
+faiss-cpu
+numpy
