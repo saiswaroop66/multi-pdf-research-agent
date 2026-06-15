@@ -12,113 +12,93 @@ st.set_page_config(page_title="Multi PDF AI Assistant")
 
 st.title("📚 Multi PDF AI Research Assistant")
 
-api_key = st.text_input(
-    "Enter Gemini API Key",
-    type="password"
+# Read API key from Streamlit Secrets
+try:
+    api_key = st.secrets["GEMINI_API_KEY"]
+    genai.configure(api_key=api_key)
+except Exception:
+    st.error("Gemini API key not found in Streamlit Secrets.")
+    st.stop()
+
+uploaded_files = st.file_uploader(
+    "Upload PDF Files",
+    type="pdf",
+    accept_multiple_files=True
 )
 
-if api_key and api_key.strip():
+if uploaded_files:
 
-    genai.configure(api_key=api_key)
+    all_documents = []
 
-    uploaded_files = st.file_uploader(
-        "Upload PDFs",
-        type="pdf",
-        accept_multiple_files=True
+    with st.spinner("Reading PDFs..."):
+
+        for uploaded_file in uploaded_files:
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=".pdf"
+            ) as tmp:
+
+                tmp.write(uploaded_file.read())
+                pdf_path = tmp.name
+
+            loader = PyPDFLoader(pdf_path)
+            documents = loader.load()
+
+            all_documents.extend(documents)
+
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=500,
+        chunk_overlap=100
     )
 
-    if uploaded_files:
+    chunks = splitter.split_documents(all_documents)
 
-        all_documents = []
+    texts = [chunk.page_content for chunk in chunks]
 
-        with st.spinner("Reading PDFs..."):
+    st.success(f"{len(chunks)} chunks created")
 
-            for uploaded_file in uploaded_files:
+    with st.spinner("Creating embeddings..."):
 
-                with tempfile.NamedTemporaryFile(
-                    delete=False,
-                    suffix=".pdf"
-                ) as tmp:
-
-                    tmp.write(uploaded_file.read())
-                    pdf_path = tmp.name
-
-                loader = PyPDFLoader(pdf_path)
-                documents = loader.load()
-
-                all_documents.extend(documents)
-
-        splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=100
+        embed_model = SentenceTransformer(
+            "all-MiniLM-L6-v2"
         )
 
-        chunks = splitter.split_documents(
-            all_documents
+        embeddings = embed_model.encode(texts)
+
+    index = faiss.IndexFlatL2(
+        embeddings.shape[1]
+    )
+
+    index.add(
+        np.array(embeddings).astype("float32")
+    )
+
+    question = st.text_input(
+        "Ask a Question"
+    )
+
+    if question:
+
+        query_embedding = embed_model.encode(
+            [question]
         )
 
-        texts = [
-            chunk.page_content
-            for chunk in chunks
-        ]
-
-        st.success(
-            f"{len(chunks)} chunks created"
+        distances, indices = index.search(
+            np.array(query_embedding).astype("float32"),
+            k=4
         )
 
-        with st.spinner("Creating Embeddings..."):
-
-            embed_model = SentenceTransformer(
-                "all-MiniLM-L6-v2"
-            )
-
-            embeddings = embed_model.encode(
-                texts
-            )
-
-        dimension = embeddings.shape[1]
-
-        index = faiss.IndexFlatL2(
-            dimension
+        context = "\n\n".join(
+            [texts[i] for i in indices[0]]
         )
 
-        index.add(
-            np.array(embeddings).astype(
-                "float32"
-            )
-        )
+        prompt = f"""
+You are a helpful PDF assistant.
 
-        question = st.text_input(
-            "Ask a Question"
-        )
+Answer ONLY from the context below.
 
-        if question:
-
-            with st.spinner("Searching Documents..."):
-
-                query_embedding = embed_model.encode(
-                    [question]
-                )
-
-                distances, indices = index.search(
-                    np.array(query_embedding).astype(
-                        "float32"
-                    ),
-                    k=4
-                )
-
-                context = "\n\n".join(
-                    [texts[i] for i in indices[0]]
-                )
-
-            prompt = f"""
-You are a helpful PDF Research Assistant.
-
-Answer only from the provided context.
-
-If the answer is not available,
-say:
-
+If the answer is not found, say:
 "I could not find the answer in the uploaded PDFs."
 
 Context:
@@ -128,26 +108,18 @@ Question:
 {question}
 """
 
-            with st.spinner("Generating Answer..."):
+        try:
 
-                model = genai.GenerativeModel(
-                    "gemini-1.5-flash"
-                )
+            model = genai.GenerativeModel(
+                "gemini-2.0-flash"
+            )
 
-                response = model.generate_content(
-                    prompt
-                )
+            response = model.generate_content(
+                prompt
+            )
 
             st.subheader("Answer")
+            st.write(response.text)
 
-            st.write(
-                response.text
-            )
-
-            st.subheader("Retrieved Context")
-
-            st.text_area(
-                "Top Matching Chunks",
-                context,
-                height=250
-            )
+        except Exception as e:
+            st.error(f"Gemini Error: {e}")
