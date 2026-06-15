@@ -15,7 +15,6 @@ st.title("📚 Multi PDF AI Research Assistant")
 # Read API key from Streamlit Secrets
 try:
     api_key = st.secrets["GEMINI_API_KEY"]
-    genai.configure(api_key=api_key)
 except Exception:
     st.error("Gemini API key not found in Streamlit Secrets.")
     st.stop()
@@ -109,17 +108,16 @@ Question:
 """
 
         try:
+            client = genai.Client(
+    api_key=api_key
+)
 
-            model = genai.GenerativeModel(
-                "gemini-2.0-flash"
-            )
+response = client.models.generate_content(
+    model="gemini-2.5-flash",
+    contents=prompt
+)
 
-            response = model.generate_content(
-                prompt
-            )
-
-            st.subheader("Answer")
-            st.write(response.text)
+st.write(response.text)
 
         except Exception as e:
             st.error(f"Gemini Error: {e}")
