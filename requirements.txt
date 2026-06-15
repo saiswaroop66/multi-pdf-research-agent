@@ -5,4 +5,4 @@ pypdf
 sentence-transformers
 faiss-cpu
 numpy
-google-generativeai
+google-genai
