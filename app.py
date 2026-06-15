@@ -12,10 +12,7 @@ st.set_page_config(page_title="Multi PDF AI Assistant")
 
 st.title("📚 Multi PDF AI Research Assistant")
 
-api_key = st.text_input(
-    "Enter Gemini API Key",
-    type="password"
-)
+api_key = st.secrets["GEMINI_API_KEY"]
 
 if api_key:
 
